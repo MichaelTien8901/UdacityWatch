@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="analog_hand_stroke">1dp</dimen>
+    <dimen name="second_hand_stroke">1dp</dimen>
+    <dimen name="heavy_mark_stroke">4dp</dimen>
+    <dimen name="thin_mark_stroke">1dp</dimen>
+    <dimen name="inner_circle_radius">2dp</dimen>
+    <dimen name="min_hand_delta">8dp</dimen>
+    <dimen name="hr_hand_delta">8dp</dimen>
+    <!--temperature offset-->
+    <dimen name="x_offset_round">28dp</dimen>
+    <dimen name="x_offset">25dp</dimen>
+    <!--temperature divider x-->
+    <!--<dimen name="divider_offset">5dp</dimen>-->
+    <!--<dimen name="divider_length">15dp</dimen>-->
+    <!--<dimen name="degree_offset">35dp</dimen>-->
+
+    <dimen name="text_size_round">20sp</dimen>
+    <dimen name="text_size">20sp</dimen>
+    <dimen name="watch_icon_offsetX">-7dp</dimen>
+    <dimen name="watch_icon_offsetY">45dp</dimen>
+    <dimen name="weather_icon_offSetX">50dp</dimen>
+    <dimen name="weather_icon_offSetY">20dp</dimen>
+    <dimen name="weather_icon_radius">20dp</dimen>
+</resources>

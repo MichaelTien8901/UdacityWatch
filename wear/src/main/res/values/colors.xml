@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="analog_ambient_background">#000000</color>
+    <color name="analog_background">#ff070d84</color>
+    <color name="analog_hands">#cccccc</color>
+    <color name="second_hands">#ff0000</color>
+    <color name="marker_color">#888888</color>
+    <color name="marker_ambient_color">#cccccc</color>
+</resources>

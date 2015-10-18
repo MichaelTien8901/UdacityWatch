@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">YMSGWatch</string>
+    <string name="my_analog_name">Udacity Watch</string>
+    <string name="format_temperature">\u00B0</string>
+</resources>
