@@ -31,6 +31,7 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -43,11 +44,17 @@ import android.view.WindowInsets;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.data.FreezableUtils;
 import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataItem;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.Wearable;
 
 import java.lang.ref.WeakReference;
+import java.util.List;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
@@ -60,8 +67,8 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
      * Update rate in milliseconds for interactive mode. We update once a second to advance the
      * second hand.
      */
-    private static final long INTERACTIVE_UPDATE_RATE_MS = TimeUnit.SECONDS.toMillis(1);
 
+    private static final long INTERACTIVE_UPDATE_RATE_MS = TimeUnit.SECONDS.toMillis(1);
     /**
      * Handler message id for updating the time periodically in interactive mode.
      */
@@ -71,6 +78,8 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD);
     private static final Typeface NORMAL_TYPEFACE =
             Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL);
+    private static final String WEATHER_PATH = "/weather";
+    private static final String WEATHER_KEY = "weather";
 
     @Override
     public Engine onCreateEngine() {
@@ -88,7 +97,51 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
         }
 
         @Override
-        public void onDataChanged(DataEventBuffer dataEventBuffer) {
+        public void onDataChanged(DataEventBuffer dataEvents) {
+            Log.d(TAG, "OnDataChange");
+            final List<DataEvent> events = FreezableUtils.freezeIterable(dataEvents);
+            dataEvents.close();
+//            if (!mGoogleApiClient.isConnected() || !mGoogleApiClient.isConnecting()) {
+//                ConnectionResult connectionResult = mGoogleApiClient
+//                        .blockingConnect(30, TimeUnit.SECONDS);
+//                if (!connectionResult.isSuccess()) {
+//                    Log.e(TAG, "DataLayerListenerService failed to connect to GoogleApiClient, "
+//                            + "error code: " + connectionResult.getErrorCode());
+//                    return;
+//                }
+//            }
+
+            // Loop through the events and send a message back to the node that created the data item.
+            for (DataEvent event : events) {
+                Log.d(TAG, "OnDataChange event");
+                DataItem item = event.getDataItem();
+                Uri uri = item.getUri();
+                String path = uri.getPath();
+                if (WEATHER_PATH.equals(path)) {
+                    DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
+                    byte[] weather_data = dataMap.getByteArray(WEATHER_KEY);
+                    Log.d(TAG, "updateWeatherData: " + weather_data[0] + ":" +weather_data[1] );
+                    Log.d(TAG, "updateWeatherData: " + weather_data[2] + ":" +weather_data[3] );
+                    Log.d(TAG, "updateWeatherData: " + weather_data[4]  );
+                    int weatherId = weather_data[1] & 0xff;
+                    weatherId = ( weatherId << 8) +  (weather_data[0] & 0xff);
+                    int high = weather_data[2];
+                    int low = weather_data[3];
+                    int unit = weather_data[4];
+                    Log.d(TAG, "weatherId: " + weatherId );
+                    updateWeatherData(weatherId, high, low, unit);
+//                    String nodeId = uri.getHost();
+
+//                    // Get the node id of the node that created the data item from the host portion of
+//                    // the uri.
+//                    // Set the data of the message to be the bytes of the Uri.
+//                    byte[] payload = uri.toString().getBytes();
+//
+//                    // Send the rpc
+//                    Wearable.MessageApi.sendMessage(mGoogleApiClient, nodeId, DATA_ITEM_RECEIVED_PATH,
+//                            payload);
+                }
+            }
 
         }
 
@@ -157,10 +210,21 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
 
         float mTextSpacingHeight;
         int mHighTemp = 21, mLowTemp = 16;
+        int mWeatherId = 701;
+        String mTempUnit;
         String mDegree;
 
+        private void updateWeatherData(int newWeatherId, int high, int low, int unit)
+        {
+            mWeatherId = newWeatherId;
+            mHighTemp = high;
+            mLowTemp = low;
+            mDegree = mTempUnit + (unit == 0 ? 'C': 'F');
+            invalidate();
+        }
         @Override
         public void onApplyWindowInsets(WindowInsets insets) {
+            Log.d(TAG, "onApplyWindowInsets");
             super.onApplyWindowInsets(insets);
             Resources resources = MyWatchFaceService.this.getResources();
             mIsRound = insets.isRound();
@@ -198,7 +262,8 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             mThinMarkStroke = resources.getDimension(R.dimen.thin_mark_stroke);
             mMinDelta = resources.getDimension(R.dimen.min_hand_delta);
             mHrDelta = resources.getDimension(R.dimen.hr_hand_delta);
-            mDegree = resources.getString(R.string.format_temperature) + 'C';
+            mTempUnit = resources.getString(R.string.format_temperature);
+            mDegree = mTempUnit + 'C';
 
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(mBackgroundColor);
@@ -446,10 +511,12 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             float wx = resources.getDimension(R.dimen.weather_icon_offSetX);
             float wy = resources.getDimension(R.dimen.weather_icon_offSetY);
             float wr = resources.getDimension(R.dimen.weather_icon_radius);
-            canvas.drawCircle( centerX+wx+wr, centerY, wr, mHandPaint );
+            canvas.drawCircle(centerX + wx + wr, centerY, wr, mHandPaint);
             mHandPaint.setColor(mHandleColor);
 
-            drawable = resources.getDrawable(mAmbient? R.drawable.ic_rain1 : R.drawable.ic_rain);
+            drawable = resources.getDrawable(
+                    mAmbient? Utility.getAmbientIconResourceForWeatherCondition(mWeatherId) :
+                            Utility.getIconResourceForWeatherCondition(mWeatherId));
             if (drawable instanceof BitmapDrawable) {
                 BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
                 Bitmap bitmap = bitmapDrawable.getBitmap();
@@ -504,16 +571,24 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
 
         @Override
         public void onVisibilityChanged(boolean visible) {
+            Log.d(TAG, "onVisibilityChanged: visible " + visible );
             super.onVisibilityChanged(visible);
 
             if (visible) {
+                mGoogleApiClient.connect();
+
                 registerReceiver();
 
                 // Update time zone in case it changed while we weren't visible.
                 mTime.clear(TimeZone.getDefault().getID());
                 mTime.setToNow();
+                invalidate();
             } else {
                 unregisterReceiver();
+                if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
+                    Wearable.DataApi.removeListener(mGoogleApiClient, this);
+                    mGoogleApiClient.disconnect();
+                }
             }
 
             // Whether the timer should be running depends on whether we're visible (as well as
