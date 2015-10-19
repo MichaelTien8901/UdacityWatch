@@ -156,7 +156,7 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
         float mXOffset, mYOffset;
 
         float mTextSpacingHeight;
-        int mHighTemp = 103, mLowTemp = 98;
+        int mHighTemp = 21, mLowTemp = 16;
         String mDegree;
 
         @Override

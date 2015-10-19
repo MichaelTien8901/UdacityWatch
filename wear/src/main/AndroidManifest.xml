@@ -26,7 +26,7 @@
                 android:resource="@drawable/preview_udacity" />
             <meta-data
                 android:name="com.google.android.wearable.watchface.preview_circular"
-                android:resource="@drawable/preview_udacity" />
+                android:resource="@drawable/preview_udacity_round" />
 
             <intent-filter>
                 <action android:name="android.service.wallpaper.WallpaperService" />
