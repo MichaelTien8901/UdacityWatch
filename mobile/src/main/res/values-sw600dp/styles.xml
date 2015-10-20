@@ -13,11 +13,10 @@
      See the License for the specific language governing permissions and
      limitations under the License.
  -->
-<fragment xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/fragment_forecast"
-    android:name="com.ymsgsoft.michaeltien.ymsgwatch.ForecastFragment"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    tools:context="com.ymsgsoft.michaeltien.ymsgwatch.ForecastFragment"
-    tools:layout="@android:layout/list_content" />
+<resources>
+
+    <style name="ForecastListStyle">
+        <item name="android:choiceMode">singleChoice</item>
+    </style>
+
+</resources>
