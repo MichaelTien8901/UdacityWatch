@@ -2,4 +2,9 @@
     <string name="app_name">YMSGWatch</string>
     <string name="my_analog_name">Udacity Watch</string>
     <string name="format_temperature">\u00B0</string>
+    <!--pref -->
+    <string name="pref_weather_id">weather_id_pref</string>
+    <string name="pref_high_temp">high_temperature_pref</string>
+    <string name="pref_low_temp">low_temperature_pref</string>
+    <string name="pref_is_metric">is_metric_pref</string>
 </resources>

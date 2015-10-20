@@ -20,6 +20,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -51,11 +52,16 @@ import com.google.android.gms.wearable.DataEventBuffer;
 import com.google.android.gms.wearable.DataItem;
 import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.Node;
+import com.google.android.gms.wearable.NodeApi;
 import com.google.android.gms.wearable.Wearable;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -81,6 +87,35 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
     private static final String WEATHER_PATH = "/weather";
     private static final String WEATHER_KEY = "weather";
 
+    private boolean mWeatherUpdateFlag = false;
+
+    class WeatherData {
+        int weather_id;
+        int high, low;
+        boolean isMetric;
+    }
+    private void saveWeatherData(WeatherData data)
+    {
+        SharedPreferences sharedPref = this.getSharedPreferences("YMSGWatchPref", Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPref.edit();
+        Resources resources = getResources();
+        editor.putInt(resources.getString(R.string.pref_weather_id), data.weather_id );
+        editor.putInt(resources.getString(R.string.pref_high_temp), data.high);
+        editor.putInt(resources.getString(R.string.pref_low_temp), data.low );
+        editor.putBoolean(resources.getString(R.string.pref_is_metric), data.isMetric);
+        editor.commit();
+        mWeatherUpdateFlag = true;
+    }
+    private WeatherData loadWeatherData(){
+        WeatherData data = new WeatherData();
+        Resources resources = getResources();
+        SharedPreferences sharedPref = this.getSharedPreferences("YMSGWatchPref", Context.MODE_PRIVATE);
+        data.weather_id = sharedPref.getInt(resources.getString(R.string.pref_weather_id), 0 );
+        data.high = sharedPref.getInt(resources.getString(R.string.pref_high_temp), 0 );
+        data.low = sharedPref.getInt(resources.getString(R.string.pref_low_temp), 0);
+        data.isMetric = sharedPref.getBoolean(resources.getString(R.string.pref_is_metric), false );
+        return data;
+    }
     @Override
     public Engine onCreateEngine() {
         return new Engine();
@@ -89,6 +124,7 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
     private class Engine extends CanvasWatchFaceService.Engine implements DataApi.DataListener,
             GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
         final String TAG = Engine.class.getSimpleName();
+
         @Override
         public void onConnectionFailed(ConnectionResult connectionResult) {
             if (Log.isLoggable(TAG, Log.DEBUG)) {
@@ -147,6 +183,7 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
 
         @Override
         public void onConnectionSuspended(int cause) {
+            Log.d(TAG, "onConnectionSuspended: " + cause);
             if (Log.isLoggable(TAG, Log.DEBUG)) {
                 Log.d(TAG, "onConnectionSuspended: " + cause);
             }
@@ -155,6 +192,7 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
 
         @Override
         public void onConnected(Bundle bundle) {
+            Log.d(TAG, "onConnected: " + bundle);
             if (Log.isLoggable(TAG, Log.DEBUG)) {
                 Log.d(TAG, "onConnected: " + bundle);
             }
@@ -165,13 +203,12 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
         Paint mBackgroundPaint;
         Paint mHandPaint;
         Paint mTextPaint;
-
         boolean mAmbient;
         Time mTime;
 
         final Handler mUpdateTimeHandler = new EngineHandler(this);
 
-        GoogleApiClient mGoogleApiClient = new GoogleApiClient.Builder(MyWatchFaceService.this)
+        final GoogleApiClient mGoogleApiClient = new GoogleApiClient.Builder(MyWatchFaceService.this)
                 .addConnectionCallbacks(this)
                 .addOnConnectionFailedListener(this)
                 .addApi(Wearable.API)
@@ -185,6 +222,9 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             }
         };
         boolean mRegisteredTimeZoneReceiver = false;
+
+        private ScheduledExecutorService mGeneratorExecutor;
+        private ScheduledFuture<?> mDataItemGeneratorFuture;
 
         /**
          * Whether the display supports fewer bits for each color in ambient mode. When true, we
@@ -209,18 +249,25 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
         float mXOffset, mYOffset;
 
         float mTextSpacingHeight;
-        int mHighTemp = 21, mLowTemp = 16;
-        int mWeatherId = 701;
-        String mTempUnit;
-        String mDegree;
+        WeatherData mWeatherData;
+        String mTempUnit; // degree C or degree F
+        Bitmap mAmbientWatchBitmap = null;
+        Bitmap mtWatchBitmap = null;
 
-        private void updateWeatherData(int newWeatherId, int high, int low, int unit)
-        {
-            mWeatherId = newWeatherId;
-            mHighTemp = high;
-            mLowTemp = low;
-            mDegree = mTempUnit + (unit == 0 ? 'C': 'F');
+        private void updateWeatherData(int newWeatherId, int high, int low, int unit) {
+            mWeatherData.weather_id = newWeatherId;
+            mWeatherData.high = high;
+            mWeatherData.low = low;
+            mWeatherData.isMetric = unit == 0;
+            saveWeatherData(mWeatherData);
+            mWeatherUpdateFlag = true;
+            // recreate watch background
+            mAmbientWatchBitmap = null;
+            mtWatchBitmap = null;
             invalidate();
+            if ( mDataItemGeneratorFuture != null)
+                mDataItemGeneratorFuture.cancel(true);
+            mDataItemGeneratorFuture = null;
         }
         @Override
         public void onApplyWindowInsets(WindowInsets insets) {
@@ -263,7 +310,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             mMinDelta = resources.getDimension(R.dimen.min_hand_delta);
             mHrDelta = resources.getDimension(R.dimen.hr_hand_delta);
             mTempUnit = resources.getString(R.string.format_temperature);
-            mDegree = mTempUnit + 'C';
 
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(mBackgroundColor);
@@ -281,6 +327,9 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             mTextPaint.setAntiAlias(true);
 
             mTime = new Time();
+            mWeatherData = loadWeatherData();
+            mGeneratorExecutor = new ScheduledThreadPoolExecutor(1);
+
         }
 
         @Override
@@ -318,7 +367,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             updateTimer();
         }
         private void drawRoundMarkers(Canvas canvas, float centerX, float centerY, float radius){
-//            float radius = secLength;
             float radius2 = radius - 15;
             mHandPaint.setStyle(Paint.Style.STROKE);
             mHandPaint.setStrokeWidth(mSecondHandleWidth);
@@ -407,121 +455,184 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             canvas.drawText(text, x, y, mTextPaint);
             mTextPaint.setColor(color);
         }
-        @Override
-        public void onDraw(Canvas canvas, Rect bounds) {
+
+        private Bitmap getAmbientWatchBitmap(int width, int height){
+            Bitmap resultBmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(resultBmp);
+
             Resources resources = MyWatchFaceService.this.getResources();
-            mBackgroundColor = resources.getColor(mAmbient? R.color.analog_ambient_background: R.color.analog_background);
-
-            mTime.setToNow();
-            int width = bounds.width();
-            int height = bounds.height();
-
-            // Draw the background.
+            mBackgroundColor = resources.getColor( R.color.analog_ambient_background);
             mBackgroundPaint.setColor(mBackgroundColor);
             canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), mBackgroundPaint);
-
-            // Find the center. Ignore the window insets so that, on round watches with a
-            // "chin", the watch face is centered on the entire screen, not just the usable
-            // portion.
             float centerX = width / 2f;
             float centerY = height / 2f;
-
-            float secRot = mTime.second / 30f * (float) Math.PI;
-            int minutes = mTime.minute;
-//            float minRot = minutes / 30f * (float) Math.PI;
-//            float hrRot = ((mTime.hour + (minutes / 60f)) / 6f) * (float) Math.PI;
-            float minRotDegree = minutes * 6f;
-            float hrRotDegree = mTime.hour * 30f + minutes / 2f;
-
             float secLength = centerX - 20;
-            float minLength = centerX - 40;
-            float hrLength = centerX - 80;
-
-            // draw marker
-            if (!mAmbient) {
-                mHandPaint.setColor(mMarkerColor);
-            } else {
-                mHandPaint.setColor(mMarkerAmbientColor);
-            }
+            mHandPaint.setColor(mMarkerAmbientColor);
             if ( mIsRound) {
                 drawRoundMarkers(canvas, centerX, centerY, secLength);
             } else {
                 drawSquareMarkers(canvas, centerX, centerY, width, height);
             }
-            // draw temperature
-//            float dx = resources.getDimension(R.dimen.degree_offset);
-            float high_temp_width = mTextPaint.measureText(String.valueOf(mHighTemp));
-            float low_temp_offset =
-                    ( high_temp_width - mTextPaint.measureText(String.valueOf(mLowTemp))) / 2;
+            // draw logo
+            Drawable drawable = resources.getDrawable(R.drawable.ic_watch_logo);
+            if ( drawable instanceof BitmapDrawable) {
+                BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
+                Bitmap bitmap1 = bitmapDrawable.getBitmap();
+                bitmap1 = toGrayscale(bitmap1);
+                canvas.drawBitmap(bitmap1,
+                        centerX + resources.getDimension(R.dimen.watch_icon_offsetX),
+                        centerY + resources.getDimension(R.dimen.watch_icon_offsetY), null);
+            }
 
-            mYOffset = centerY;
-            if ( !mAmbient ) {
+            // draw weather icon
+            int iconResourceId = Utility.getAmbientIconResourceForWeatherCondition(mWeatherData.weather_id);
+            if ( iconResourceId != -1) {
+                float high_temp_width = mTextPaint.measureText(String.valueOf(mWeatherData.high));
+                float low_temp_offset =
+                        ( high_temp_width - mTextPaint.measureText(String.valueOf(mWeatherData.low))) / 2;
+                mYOffset = centerY;
+                String mDegree = mTempUnit + (mWeatherData.isMetric? "C": "F");
+                // draw temperature
+                drawBorderText(canvas,
+                        String.valueOf(mWeatherData.high),
+                        mXOffset,
+                        mYOffset - mHeavyMarkStroke);
+                drawBorderText(canvas,
+                        String.valueOf(mWeatherData.low),
+                        mXOffset + low_temp_offset,
+                        mYOffset + mTextSpacingHeight);
+                drawBorderText(canvas,
+                        mDegree,
+                        mXOffset + high_temp_width + 5,
+                        mYOffset + mTextSpacingHeight / 2);
+                mHandPaint.setStrokeWidth(2);
+                float dl = high_temp_width;
+                canvas.drawLine(mXOffset, mYOffset, mXOffset + dl, mYOffset, mHandPaint);
+
+
+                float wx = resources.getDimension(R.dimen.weather_icon_offSetX);
+                float wy = resources.getDimension(R.dimen.weather_icon_offSetY);
+                float wr = resources.getDimension(R.dimen.weather_icon_radius);
+
+                mHandPaint.setColor(mBackgroundColor);
+                mHandPaint.setStyle(Paint.Style.FILL);
+                canvas.drawCircle(centerX + wx + wr, centerY, wr, mHandPaint);
+
+                mHandPaint.setColor(mMarkerColor);
+                mHandPaint.setStyle(Paint.Style.STROKE);
+                canvas.drawCircle(centerX + wx + wr, centerY, wr, mHandPaint);
+                mHandPaint.setColor(mHandleColor);
+                drawable = resources.getDrawable( iconResourceId );
+                if (drawable instanceof BitmapDrawable) {
+                    BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
+                    Bitmap bitmap1 = bitmapDrawable.getBitmap();
+                    canvas.drawBitmap(bitmap1, centerX + wx, centerY - wy, null);
+                }
+            }
+            return resultBmp;
+        }
+        private Bitmap getWatchBitmap(int width, int height){
+            Bitmap resultBmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(resultBmp);
+
+            Resources resources = MyWatchFaceService.this.getResources();
+            mBackgroundColor = resources.getColor( R.color.analog_background);
+            mBackgroundPaint.setColor(mBackgroundColor);
+            canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), mBackgroundPaint);
+            float centerX = width / 2f;
+            float centerY = height / 2f;
+            float secLength = centerX - 20;
+            mHandPaint.setColor(mMarkerColor);
+            if ( mIsRound) {
+                drawRoundMarkers(canvas, centerX, centerY, secLength);
+            } else {
+                drawSquareMarkers(canvas, centerX, centerY, width, height);
+            }
+            // draw logo
+            Drawable drawable = resources.getDrawable(R.drawable.ic_watch_logo);
+            if ( drawable instanceof BitmapDrawable) {
+                BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
+                Bitmap bitmap1 = bitmapDrawable.getBitmap();
+                canvas.drawBitmap(bitmap1,
+                        centerX + resources.getDimension(R.dimen.watch_icon_offsetX),
+                        centerY + resources.getDimension(R.dimen.watch_icon_offsetY), null);
+            }
+
+            // draw weather icon
+            int iconResourceId = Utility.getIconResourceForWeatherCondition(mWeatherData.weather_id);
+            if ( iconResourceId != -1) {
+                float high_temp_width = mTextPaint.measureText(String.valueOf(mWeatherData.high));
+                float low_temp_offset =
+                        ( high_temp_width - mTextPaint.measureText(String.valueOf(mWeatherData.low))) / 2;
+                mYOffset = centerY;
+                String mDegree = mTempUnit + (mWeatherData.isMetric? "C": "F");
+                // draw temperature
                 canvas.drawText(
-                        String.valueOf(mHighTemp),
+                        String.valueOf(mWeatherData.high),
                         mXOffset,
                         mYOffset - mHeavyMarkStroke,
                         mTextPaint);
                 canvas.drawText(
-                        String.valueOf(mLowTemp),
+                        String.valueOf(mWeatherData.low),
                         mXOffset + low_temp_offset,
                         mYOffset + mTextSpacingHeight,
                         mTextPaint);
 
                 canvas.drawText(
                         mDegree,
-                        mXOffset + high_temp_width+5,
+                        mXOffset + high_temp_width + 5,
                         mYOffset + mTextSpacingHeight / 2,
                         mTextPaint);
-            } else {
-                drawBorderText(canvas,
-                        String.valueOf(mHighTemp),
-                        mXOffset,
-                        mYOffset - mHeavyMarkStroke);
-                drawBorderText(canvas,
-                        String.valueOf(mLowTemp),
-                        mXOffset + low_temp_offset,
-                        mYOffset + mTextSpacingHeight);
-                drawBorderText( canvas,
-                        mDegree,
-                        mXOffset + high_temp_width+5,
-                        mYOffset + mTextSpacingHeight / 2 );
-            }
-            mHandPaint.setStrokeWidth(2);
-//            float dx = resources.getDimension(R.dimen.divider_offset);
-            float dl = high_temp_width;
-            canvas.drawLine(mXOffset, mYOffset, mXOffset + dl, mYOffset, mHandPaint);
 
-            // draw logo
-            Drawable drawable = resources.getDrawable(R.drawable.ic_watch_logo);
-            if ( drawable instanceof BitmapDrawable) {
-                BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
-                Bitmap bitmap = bitmapDrawable.getBitmap();
-                if ( mAmbient) bitmap = toGrayscale(bitmap);
-                canvas.drawBitmap( bitmap,
-                        centerX+resources.getDimension(R.dimen.watch_icon_offsetX),
-                        centerY+resources.getDimension(R.dimen.watch_icon_offsetY), null );
-            }
-            // draw weather icon
-            mHandPaint.setColor(mMarkerColor);
-            if ( !mAmbient ) {
+                mHandPaint.setStrokeWidth(2);
+                float dl = high_temp_width;
+                canvas.drawLine(mXOffset, mYOffset, mXOffset + dl, mYOffset, mHandPaint);
+
+                mHandPaint.setColor(mMarkerColor);
                 mHandPaint.setStyle(Paint.Style.FILL);
-            } else {
-                mHandPaint.setStyle(Paint.Style.STROKE);
-            }
-            float wx = resources.getDimension(R.dimen.weather_icon_offSetX);
-            float wy = resources.getDimension(R.dimen.weather_icon_offSetY);
-            float wr = resources.getDimension(R.dimen.weather_icon_radius);
-            canvas.drawCircle(centerX + wx + wr, centerY, wr, mHandPaint);
-            mHandPaint.setColor(mHandleColor);
 
-            drawable = resources.getDrawable(
-                    mAmbient? Utility.getAmbientIconResourceForWeatherCondition(mWeatherId) :
-                            Utility.getIconResourceForWeatherCondition(mWeatherId));
-            if (drawable instanceof BitmapDrawable) {
-                BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
-                Bitmap bitmap = bitmapDrawable.getBitmap();
-                canvas.drawBitmap( bitmap, centerX+wx, centerY-wy, null );
+                float wx = resources.getDimension(R.dimen.weather_icon_offSetX);
+                float wy = resources.getDimension(R.dimen.weather_icon_offSetY);
+                float wr = resources.getDimension(R.dimen.weather_icon_radius);
+                canvas.drawCircle(centerX + wx + wr, centerY, wr, mHandPaint);
+                mHandPaint.setColor(mHandleColor);
+                drawable = resources.getDrawable( iconResourceId );
+                if (drawable instanceof BitmapDrawable) {
+                    BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
+                    Bitmap bitmap1 = bitmapDrawable.getBitmap();
+                    canvas.drawBitmap(bitmap1, centerX + wx, centerY - wy, null);
+                }
             }
+            return resultBmp;
+        }
+
+        @Override
+        public void onDraw(Canvas canvas, Rect bounds) {
+            mTime.setToNow();
+            int width = bounds.width();
+            int height = bounds.height();
+
+            if ( mAmbient) {
+                if ( mAmbientWatchBitmap == null)
+                    mAmbientWatchBitmap = getAmbientWatchBitmap(width, height);
+                canvas.drawBitmap(mAmbientWatchBitmap,
+                        0, 0, null );
+            } else {
+                if ( mtWatchBitmap == null)
+                    mtWatchBitmap = getWatchBitmap(width, height);
+                canvas.drawBitmap(mtWatchBitmap,
+                        0, 0, null );
+            }
+            float centerX = width / 2f;
+            float centerY = height / 2f;
+            float secRot = mTime.second / 30f * (float) Math.PI;
+            int minutes = mTime.minute;
+            float minRotDegree = minutes * 6f;
+            float hrRotDegree = mTime.hour * 30f + minutes / 2f;
+
+            float secLength = centerX - 20;
+            float minLength = centerX - 40;
+            float hrLength = centerX - 80;
 
             mHandPaint.setStrokeWidth(mHandleWidth);
 
@@ -567,28 +678,35 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
                 mHandPaint.setColor(mHandleColor);
                 mHandPaint.setStrokeWidth(mHandleWidth);
             }
+//            if ( !mWeatherUpdateFlag) {
+//                new StartupRequestWeatherTask().execute();
+//            }
         }
 
         @Override
         public void onVisibilityChanged(boolean visible) {
-            Log.d(TAG, "onVisibilityChanged: visible " + visible );
+            Log.d(TAG, "onVisibilityChanged: visible " + visible);
             super.onVisibilityChanged(visible);
 
             if (visible) {
                 mGoogleApiClient.connect();
-
                 registerReceiver();
-
                 // Update time zone in case it changed while we weren't visible.
                 mTime.clear(TimeZone.getDefault().getID());
                 mTime.setToNow();
                 invalidate();
+                if ( !mWeatherUpdateFlag)
+                   mDataItemGeneratorFuture = mGeneratorExecutor.scheduleWithFixedDelay(
+                        new WeatherMessageGenerator(), 1, 10, TimeUnit.SECONDS);
+
             } else {
                 unregisterReceiver();
                 if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
-                    Wearable.DataApi.removeListener(mGoogleApiClient, this);
                     mGoogleApiClient.disconnect();
+                    Wearable.DataApi.removeListener(mGoogleApiClient, this);
                 }
+                if ( mDataItemGeneratorFuture != null)
+                   mDataItemGeneratorFuture.cancel(true);
             }
 
             // Whether the timer should be running depends on whether we're visible (as well as
@@ -644,6 +762,33 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
             }
         }
+        final String REQUEST_WEATHER_PATH = "/request_weather";
+
+//        private class StartupRequestWeatherTask extends AsyncTask<Void, Void, Void> {
+//            protected Void doInBackground(Void... params) {
+//                NodeApi.GetConnectedNodesResult nodes =
+//                        Wearable.NodeApi.getConnectedNodes(mGoogleApiClient).await();
+//                for (Node node : nodes.getNodes()) {
+//                    Wearable.MessageApi.sendMessage(mGoogleApiClient, node.getId(),
+//                            REQUEST_WEATHER_PATH, null);
+//                }
+//                return null;
+//            }
+//        }
+        private class WeatherMessageGenerator implements Runnable {
+            @Override
+            public void run() {
+                if (!mGoogleApiClient.isConnected()) {
+                    return;
+                }
+                NodeApi.GetConnectedNodesResult nodes =
+                        Wearable.NodeApi.getConnectedNodes(mGoogleApiClient).await();
+                for (Node node : nodes.getNodes()) {
+                    Wearable.MessageApi.sendMessage(mGoogleApiClient, node.getId(),
+                            REQUEST_WEATHER_PATH, null);
+                }
+            }
+        }
     }
 
     private static class EngineHandler extends Handler {
@@ -664,5 +809,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
                 }
             }
         }
+
     }
 }

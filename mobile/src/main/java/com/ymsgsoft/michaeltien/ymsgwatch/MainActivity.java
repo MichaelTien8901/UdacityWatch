@@ -9,12 +9,15 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.TextView;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.wearable.DataApi;
 import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.MessageApi;
+import com.google.android.gms.wearable.MessageEvent;
 import com.google.android.gms.wearable.Node;
 import com.google.android.gms.wearable.NodeApi;
 import com.google.android.gms.wearable.PutDataMapRequest;
@@ -22,7 +25,7 @@ import com.google.android.gms.wearable.PutDataRequest;
 import com.google.android.gms.wearable.Wearable;
 
 public class MainActivity extends AppCompatActivity implements DataApi.DataListener,
-        NodeApi.NodeListener, GoogleApiClient.ConnectionCallbacks,
+        NodeApi.NodeListener, GoogleApiClient.ConnectionCallbacks, MessageApi.MessageListener,
         GoogleApiClient.OnConnectionFailedListener
 {
     /**
@@ -35,12 +38,14 @@ public class MainActivity extends AppCompatActivity implements DataApi.DataListe
 
     private GoogleApiClient mGoogleApiClient;
     private boolean mResolvingError = false;
+    private TextView helloTextView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        helloTextView = (TextView) findViewById(R.id.hello_text_view);
         setSupportActionBar(toolbar);
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
@@ -55,8 +60,7 @@ public class MainActivity extends AppCompatActivity implements DataApi.DataListe
                 .addConnectionCallbacks(this)
                 .addOnConnectionFailedListener(this)
                 .build();
-        mGoogleApiClient.connect();
-
+//        mGoogleApiClient.connect();
     }
 
     @Override
@@ -89,7 +93,7 @@ public class MainActivity extends AppCompatActivity implements DataApi.DataListe
     @Override
     public void onConnected(Bundle bundle) {
         Wearable.DataApi.addListener(mGoogleApiClient, this);
-//        Wearable.MessageApi.addListener(mGoogleApiClient, this);
+        Wearable.MessageApi.addListener(mGoogleApiClient, this);
         Wearable.NodeApi.addListener(mGoogleApiClient, this);
 
     }
@@ -134,9 +138,27 @@ public class MainActivity extends AppCompatActivity implements DataApi.DataListe
     private int highTemp = 32;
     private void testWeatherData()
     {
-        Log.d(TAG, "testWeatherData");
         updateWeatherData(511, highTemp++, 28, 1);
+        if ( helloTextView != null) {
+            helloTextView.setText( String.valueOf(highTemp));
+        }
     }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        mGoogleApiClient.connect();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        Wearable.DataApi.removeListener(mGoogleApiClient, this);
+        Wearable.MessageApi.removeListener(mGoogleApiClient, this);
+        Wearable.NodeApi.removeListener(mGoogleApiClient, this);
+        mGoogleApiClient.disconnect();
+    }
+
     private void updateWeatherData(int weather_id, int high, int low, int unit) {
         byte[] weather_data = new byte[5];
         weather_data[0] = (byte) (weather_id & 0x0000ff);
@@ -163,5 +185,12 @@ public class MainActivity extends AppCompatActivity implements DataApi.DataListe
                     }
                 });
 
+    }
+    final String REQUEST_WEATHER_PATH = "/request_weather";
+    @Override
+    public void onMessageReceived(MessageEvent messageEvent) {
+        if (REQUEST_WEATHER_PATH.equals(messageEvent.getPath()) ) {
+            testWeatherData();
+        }
     }
 }
