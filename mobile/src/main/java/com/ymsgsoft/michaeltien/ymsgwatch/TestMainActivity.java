@@ -24,14 +24,14 @@ import com.google.android.gms.wearable.PutDataMapRequest;
 import com.google.android.gms.wearable.PutDataRequest;
 import com.google.android.gms.wearable.Wearable;
 
-public class MainActivity extends AppCompatActivity implements DataApi.DataListener,
+public class TestMainActivity extends AppCompatActivity implements DataApi.DataListener,
         NodeApi.NodeListener, GoogleApiClient.ConnectionCallbacks, MessageApi.MessageListener,
         GoogleApiClient.OnConnectionFailedListener
 {
     /**
         * Request code for launching the Intent to resolve Google Play services errors.
         */
-    final String TAG = MainActivity.class.getSimpleName();
+    final String TAG = TestMainActivity.class.getSimpleName();
     private static final int REQUEST_RESOLVE_ERROR = 1000;
     private static final String WEATHER_PATH = "/weather";
     private static final String WEATHER_KEY = "weather";
