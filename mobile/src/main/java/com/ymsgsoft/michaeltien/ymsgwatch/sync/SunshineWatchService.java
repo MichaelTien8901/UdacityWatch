@@ -65,12 +65,12 @@ public class SunshineWatchService extends WearableListenerService {
     @Override
     public void onPeerConnected(Node peer) {
         super.onPeerConnected(peer);
-        Log.d(TAG, "onPeerConnected");
+        Log.d(TAG, "onPeerConnected, mSyncFlag: " + mSyncFlag);
         if ( !mSyncFlag)
            syncWearWeatherData(getApplicationContext());
     }
 
-    static int serial = 0;
+    static int data_serial_no = 0;
     static public void syncWearWeatherData(Context context){
         Log.e(TAG, "syncWearWeatherData");
         GoogleApiClient googleApiClient = new GoogleApiClient.Builder(context)
@@ -111,8 +111,8 @@ public class SunshineWatchService extends WearableListenerService {
         weather_data[1] = (byte) (weather_id >> 8 & 0xff);
         weather_data[2] = (byte) high;
         weather_data[3] = (byte) low;
-        weather_data[4] = (byte) unit; // metric or uk
-        weather_data[5] = (byte) serial++; // serial number, prevent same data
+        weather_data[4] = (byte) unit; // metric or imperial
+        weather_data[5] = (byte) data_serial_no++; // data_serial_no number, prevent same data not triggering onDataChanged
         PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(WEATHER_PATH);
         putDataMapRequest.getDataMap().putByteArray(WEATHER_KEY, weather_data);
         PutDataRequest request = putDataMapRequest.asPutDataRequest();

@@ -85,9 +85,10 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD);
     private static final Typeface NORMAL_TYPEFACE =
             Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL);
+
     private static final String WEATHER_PATH = "/weather";
     private static final String WEATHER_KEY = "weather";
-
+    private static final String REQUEST_WEATHER_PATH = "/request_weather";
     private boolean mWeatherUpdateFlag = false;
 
     class WeatherData {
@@ -95,9 +96,9 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
         int high, low;
         boolean isMetric;
     }
-    private void saveWeatherData(WeatherData data)
-    {
-        SharedPreferences sharedPref = this.getSharedPreferences("YMSGWatchPref", Context.MODE_PRIVATE);
+    static final String PREF_UDACITY_WATCH_WEATHER = "YMSGWatchPref";
+    private void saveWeatherData(WeatherData data) {
+        SharedPreferences sharedPref = this.getSharedPreferences(PREF_UDACITY_WATCH_WEATHER, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPref.edit();
         Resources resources = getResources();
         editor.putInt(resources.getString(R.string.pref_weather_id), data.weather_id );
@@ -110,7 +111,7 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
     private WeatherData loadWeatherData(){
         WeatherData data = new WeatherData();
         Resources resources = getResources();
-        SharedPreferences sharedPref = this.getSharedPreferences("YMSGWatchPref", Context.MODE_PRIVATE);
+        SharedPreferences sharedPref = this.getSharedPreferences(PREF_UDACITY_WATCH_WEATHER, Context.MODE_PRIVATE);
         data.weather_id = sharedPref.getInt(resources.getString(R.string.pref_weather_id), 0 );
         data.high = sharedPref.getInt(resources.getString(R.string.pref_high_temp), 0 );
         data.low = sharedPref.getInt(resources.getString(R.string.pref_low_temp), 0);
@@ -125,6 +126,57 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
     private class Engine extends CanvasWatchFaceService.Engine implements DataApi.DataListener,
             GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
         final String TAG = Engine.class.getSimpleName();
+        Paint mBackgroundPaint;
+        Paint mHandPaint;
+        Paint mTextPaint;
+        boolean mAmbient;
+        Time mTime;
+        /**
+               * Whether the display supports fewer bits for each color in ambient mode. When true, we
+                * disable anti-aliasing in ambient mode.
+                */
+        boolean mLowBitAmbient;
+        int mHandleColor;
+        int mSecHandleColor;
+        int mMarkerColor;
+        int mMarkerAmbientColor;
+        int mBackgroundColor;
+        float mHandleWidth;
+        float mSecondHandleWidth;
+        float mHeavyMarkStroke;
+        float mThinMarkStroke;
+        float mInnerRadius;
+        float mMinDelta;
+        float mHrDelta;
+        boolean mIsRound;
+        int mScreenTextColor = Color.WHITE;
+        float mXOffset, mYOffset;
+
+        float mTextSpacingHeight;
+        WeatherData mWeatherData;
+        String mTempUnit; // degree C or degree F
+        Bitmap mAmbientWatchBitmap = null;
+        Bitmap mtWatchBitmap = null;
+
+        final Handler mUpdateTimeHandler = new EngineHandler(this);
+
+        final GoogleApiClient mGoogleApiClient = new GoogleApiClient.Builder(MyWatchFaceService.this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(Wearable.API)
+                .build();
+
+        final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                mTime.clear(intent.getStringExtra("time-zone"));
+                mTime.setToNow();
+            }
+        };
+
+        boolean mRegisteredTimeZoneReceiver = false;
+        private ScheduledExecutorService mGeneratorExecutor;
+        private ScheduledFuture<?> mDataItemGeneratorFuture;
 
         @Override
         public void onConnectionFailed(ConnectionResult connectionResult) {
@@ -155,7 +207,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
                     updateWeatherData(weatherId, high, low, unit);
                 }
             }
-
         }
 
         @Override
@@ -163,7 +214,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             if (Log.isLoggable(TAG, Log.DEBUG)) {
                 Log.d(TAG, "onConnectionSuspended: " + cause);
             }
-
         }
 
         @Override
@@ -173,60 +223,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             }
             Wearable.DataApi.addListener(mGoogleApiClient, Engine.this);
         }
-
-        Paint mBackgroundPaint;
-        Paint mHandPaint;
-        Paint mTextPaint;
-        boolean mAmbient;
-        Time mTime;
-
-        final Handler mUpdateTimeHandler = new EngineHandler(this);
-
-        final GoogleApiClient mGoogleApiClient = new GoogleApiClient.Builder(MyWatchFaceService.this)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .addApi(Wearable.API)
-                .build();
-
-        final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                mTime.clear(intent.getStringExtra("time-zone"));
-                mTime.setToNow();
-            }
-        };
-        boolean mRegisteredTimeZoneReceiver = false;
-
-        private ScheduledExecutorService mGeneratorExecutor;
-        private ScheduledFuture<?> mDataItemGeneratorFuture;
-
-        /**
-         * Whether the display supports fewer bits for each color in ambient mode. When true, we
-         * disable anti-aliasing in ambient mode.
-         */
-        boolean mLowBitAmbient;
-
-        int mHandleColor;
-        int mSecHandleColor;
-        int mMarkerColor;
-        int mMarkerAmbientColor;
-        int mBackgroundColor;
-        float mHandleWidth;
-        float mSecondHandleWidth;
-        float mHeavyMarkStroke;
-        float mThinMarkStroke;
-        float mInnerRadius;
-        float mMinDelta;
-        float mHrDelta;
-        boolean mIsRound;
-        int mScreenTextColor = Color.WHITE;
-        float mXOffset, mYOffset;
-
-        float mTextSpacingHeight;
-        WeatherData mWeatherData;
-        String mTempUnit; // degree C or degree F
-        Bitmap mAmbientWatchBitmap = null;
-        Bitmap mtWatchBitmap = null;
 
         private void updateWeatherData(int newWeatherId, int high, int low, int unit) {
             mWeatherData.weather_id = newWeatherId;
@@ -243,6 +239,7 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
                 mDataItemGeneratorFuture.cancel(true);
             mDataItemGeneratorFuture = null;
         }
+
         @Override
         public void onApplyWindowInsets(WindowInsets insets) {
             Log.d(TAG, "onApplyWindowInsets");
@@ -265,7 +262,7 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             super.onCreate(holder);
 
             setWatchFaceStyle(new WatchFaceStyle.Builder(MyWatchFaceService.this)
-                    .setStatusBarGravity(Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL)
+                    .setStatusBarGravity(Gravity.CENTER_HORIZONTAL | Gravity.TOP)
                     .setCardPeekMode(WatchFaceStyle.PEEK_MODE_SHORT)
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
                     .setShowSystemUiTime(false)
@@ -304,7 +301,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             mTime = new Time();
             mWeatherData = loadWeatherData();
             mGeneratorExecutor = new ScheduledThreadPoolExecutor(1);
-
         }
 
         @Override
@@ -590,13 +586,11 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             if ( mAmbient) {
                 if ( mAmbientWatchBitmap == null)
                     mAmbientWatchBitmap = getAmbientWatchBitmap(width, height);
-                canvas.drawBitmap(mAmbientWatchBitmap,
-                        0, 0, null );
+                canvas.drawBitmap(mAmbientWatchBitmap, 0, 0, null );
             } else {
                 if ( mtWatchBitmap == null)
                     mtWatchBitmap = getWatchBitmap(width, height);
-                canvas.drawBitmap(mtWatchBitmap,
-                        0, 0, null );
+                canvas.drawBitmap(mtWatchBitmap, 0, 0, null );
             }
             float centerX = width / 2f;
             float centerY = height / 2f;
@@ -704,9 +698,9 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
         }
 
         /**
-         * Starts the {@link #mUpdateTimeHandler} timer if it should be running and isn't currently
-         * or stops it if it shouldn't be running but currently is.
-         */
+                * Starts the {@link #mUpdateTimeHandler} timer if it should be running and isn't currently
+                * or stops it if it shouldn't be running but currently is.
+                */
         private void updateTimer() {
             mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME);
             if (shouldTimerBeRunning()) {
@@ -715,16 +709,16 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
         }
 
         /**
-         * Returns whether the {@link #mUpdateTimeHandler} timer should be running. The timer should
-         * only run when we're visible and in interactive mode.
-         */
+                * Returns whether the {@link #mUpdateTimeHandler} timer should be running. The timer should
+                * only run when we're visible and in interactive mode.
+                */
         private boolean shouldTimerBeRunning() {
             return isVisible() && !isInAmbientMode();
         }
 
         /**
-         * Handle updating the time periodically in interactive mode.
-         */
+                * Handle updating the time periodically in interactive mode.
+                */
         private void handleUpdateTimeMessage() {
             invalidate();
             if (shouldTimerBeRunning()) {
@@ -734,8 +728,10 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
             }
         }
-        final String REQUEST_WEATHER_PATH = "/request_weather";
 
+        /**
+                *  request for initial data on starting up
+                */
         private class WeatherMessageGenerator implements Runnable {
             @Override
             public void run() {
