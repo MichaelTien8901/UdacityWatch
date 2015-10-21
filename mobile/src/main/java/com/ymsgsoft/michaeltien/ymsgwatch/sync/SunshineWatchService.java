@@ -41,7 +41,7 @@ public class SunshineWatchService extends WearableListenerService {
     public static final int COL_WEATHER_MAX_TEMP = 2;
     public static final int COL_WEATHER_MIN_TEMP = 3;
     public static final int COL_WEATHER_CONDITION_ID = 4;
-
+    static private boolean mSyncFlag = false;
     static Cursor getTodayWeatherCursor(Context context)
     {
         String locationSetting = Utility.getPreferredLocation(context);
@@ -66,16 +66,13 @@ public class SunshineWatchService extends WearableListenerService {
     public void onPeerConnected(Node peer) {
         super.onPeerConnected(peer);
         Log.d(TAG, "onPeerConnected");
-    }
-
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        Log.d(TAG, "onCreate");
+        if ( !mSyncFlag)
+           syncWearWeatherData(getApplicationContext());
     }
 
     static int serial = 0;
-    static void syncWearWeatherData(Context context){
+    static public void syncWearWeatherData(Context context){
+        Log.e(TAG, "syncWearWeatherData");
         GoogleApiClient googleApiClient = new GoogleApiClient.Builder(context)
                 .addApi(Wearable.API)
                 .build();
@@ -83,24 +80,29 @@ public class SunshineWatchService extends WearableListenerService {
                 googleApiClient.blockingConnect(30, TimeUnit.SECONDS);
         if (!connectionResult.isSuccess()) {
             Log.e(TAG, "Failed to connect to GoogleApiClient.");
+            mSyncFlag = false;
             return;
         }
         Cursor data = getTodayWeatherCursor(context);
-        if ( data != null && data.moveToFirst()) {
-            boolean isMetric = Utility.isMetric(context);
-            int weatherId = data.getInt(COL_WEATHER_CONDITION_ID);
+        if ( data != null ) {
+            if ( data.moveToFirst()) {
+                boolean isMetric = Utility.isMetric(context);
+                int weatherId = data.getInt(COL_WEATHER_CONDITION_ID);
 
-            double high = data.getDouble(COL_WEATHER_MAX_TEMP);
-            double low = data.getDouble(COL_WEATHER_MIN_TEMP );
-            int high_int, low_int;
-            if ( isMetric) {
-                high_int = (int) (high + 0.5);
-                low_int = (int) (low + 0.5);
-            } else {
-                high_int = (int) (high * 9 / 5 + 32.5);
-                low_int = (int) (low * 9 / 5 + 32.5);
+                double high = data.getDouble(COL_WEATHER_MAX_TEMP);
+                double low = data.getDouble(COL_WEATHER_MIN_TEMP);
+                int high_int, low_int;
+                if (isMetric) {
+                    high_int = (int) (high + 0.5);
+                    low_int = (int) (low + 0.5);
+                } else {
+                    high_int = (int) (high * 9 / 5 + 32.5);
+                    low_int = (int) (low * 9 / 5 + 32.5);
+                }
+                updateWeatherData(googleApiClient, weatherId, high_int, low_int, isMetric ? 0 : 1);
             }
-            updateWeatherData(googleApiClient, weatherId, high_int, low_int, isMetric? 0: 1);
+            data.close();
+            mSyncFlag = true;
         }
     }
     static void updateWeatherData(GoogleApiClient mGoogleApiClient, int weather_id, int high, int low, int unit) {
