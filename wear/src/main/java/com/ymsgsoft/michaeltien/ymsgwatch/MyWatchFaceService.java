@@ -138,45 +138,21 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
             Log.d(TAG, "OnDataChange");
             final List<DataEvent> events = FreezableUtils.freezeIterable(dataEvents);
             dataEvents.close();
-//            if (!mGoogleApiClient.isConnected() || !mGoogleApiClient.isConnecting()) {
-//                ConnectionResult connectionResult = mGoogleApiClient
-//                        .blockingConnect(30, TimeUnit.SECONDS);
-//                if (!connectionResult.isSuccess()) {
-//                    Log.e(TAG, "DataLayerListenerService failed to connect to GoogleApiClient, "
-//                            + "error code: " + connectionResult.getErrorCode());
-//                    return;
-//                }
-//            }
 
             // Loop through the events and send a message back to the node that created the data item.
             for (DataEvent event : events) {
-                Log.d(TAG, "OnDataChange event");
                 DataItem item = event.getDataItem();
                 Uri uri = item.getUri();
                 String path = uri.getPath();
                 if (WEATHER_PATH.equals(path)) {
                     DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
                     byte[] weather_data = dataMap.getByteArray(WEATHER_KEY);
-                    Log.d(TAG, "updateWeatherData: " + weather_data[0] + ":" +weather_data[1] );
-                    Log.d(TAG, "updateWeatherData: " + weather_data[2] + ":" +weather_data[3] );
-                    Log.d(TAG, "updateWeatherData: " + weather_data[4]  );
                     int weatherId = weather_data[1] & 0xff;
                     weatherId = ( weatherId << 8) +  (weather_data[0] & 0xff);
                     int high = weather_data[2];
                     int low = weather_data[3];
                     int unit = weather_data[4];
-                    Log.d(TAG, "weatherId: " + weatherId );
                     updateWeatherData(weatherId, high, low, unit);
-//                    String nodeId = uri.getHost();
-
-//                    // Get the node id of the node that created the data item from the host portion of
-//                    // the uri.
-//                    // Set the data of the message to be the bytes of the Uri.
-//                    byte[] payload = uri.toString().getBytes();
-//
-//                    // Send the rpc
-//                    Wearable.MessageApi.sendMessage(mGoogleApiClient, nodeId, DATA_ITEM_RECEIVED_PATH,
-//                            payload);
                 }
             }
 
@@ -184,7 +160,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
 
         @Override
         public void onConnectionSuspended(int cause) {
-            Log.d(TAG, "onConnectionSuspended: " + cause);
             if (Log.isLoggable(TAG, Log.DEBUG)) {
                 Log.d(TAG, "onConnectionSuspended: " + cause);
             }
@@ -193,12 +168,10 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
 
         @Override
         public void onConnected(Bundle bundle) {
-            Log.d(TAG, "onConnected: " + bundle);
             if (Log.isLoggable(TAG, Log.DEBUG)) {
                 Log.d(TAG, "onConnected: " + bundle);
             }
             Wearable.DataApi.addListener(mGoogleApiClient, Engine.this);
-//            updateConfigDataItemAndUiOnStartup();
         }
 
         Paint mBackgroundPaint;
@@ -680,9 +653,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
                 mHandPaint.setColor(mHandleColor);
                 mHandPaint.setStrokeWidth(mHandleWidth);
             }
-//            if ( !mWeatherUpdateFlag) {
-//                new StartupRequestWeatherTask().execute();
-//            }
         }
 
         @Override
@@ -766,17 +736,6 @@ public class MyWatchFaceService extends CanvasWatchFaceService {
         }
         final String REQUEST_WEATHER_PATH = "/request_weather";
 
-//        private class StartupRequestWeatherTask extends AsyncTask<Void, Void, Void> {
-//            protected Void doInBackground(Void... params) {
-//                NodeApi.GetConnectedNodesResult nodes =
-//                        Wearable.NodeApi.getConnectedNodes(mGoogleApiClient).await();
-//                for (Node node : nodes.getNodes()) {
-//                    Wearable.MessageApi.sendMessage(mGoogleApiClient, node.getId(),
-//                            REQUEST_WEATHER_PATH, null);
-//                }
-//                return null;
-//            }
-//        }
         private class WeatherMessageGenerator implements Runnable {
             @Override
             public void run() {
