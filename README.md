@@ -26,13 +26,8 @@ File "mobile/src/main/res/values/security_string.xml".  Using "RAW" format to re
 
 ## Synchronization of weather condition
 
-<<<<<<< HEAD
-When watchface starting up, it will send message to Sunshine program to request synchronization of weather condition.  
-When new weather data synchronzied from OpenWeatherMap, Sunshine program will sync to wear watch.
-=======
    When watchface starting up, it will send message to Sunshine program to request synchronize the weather condition.  
 When new weather data synchronized from OpenWeatherMap, Sunshine program will sync to wear watch.
->>>>>>> 0a3b0e849dc5361babac992dea28ab00a1971991
    
 ## Settings   
 
